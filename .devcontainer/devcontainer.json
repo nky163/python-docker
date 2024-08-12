@@ -1,0 +1,17 @@
+{
+	"name": "myapp",
+	"service": "app",
+	"workspaceFolder": "/myapp",
+	"dockerComposeFile": "../docker-compose.yaml",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python"
+			]
+		},
+		"settings": {
+			"python.pythonPath": "{workspaceFolder}/app/.venv/bin/python"
+		}
+	}
+	
+}

@@ -1,14 +1,10 @@
-# Welcome to your CDK TypeScript project
+# app
+- `docker-compose build --no-cache`
+- `docker-compose up -d`
 
-This is a blank project for CDK development with TypeScript.
+## 開発
+- 外部パッケージ追加
+```poetry add xxx```
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
-
-## Useful commands
-
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+- 開発のみ使用する外部パッケージの追加
+```poetry add --group dev xxx```
