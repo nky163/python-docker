@@ -1,0 +1,1 @@
+docker build -f app/Dockerfile --target production --no-cache --progress=plain . -t myapp-prod:latest

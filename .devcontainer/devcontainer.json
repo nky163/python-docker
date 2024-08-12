@@ -2,7 +2,7 @@
 	"name": "myapp",
 	"service": "app",
 	"workspaceFolder": "/myapp",
-	"dockerComposeFile": "../docker-compose.yaml",
+	"dockerComposeFile": "../docker/docker-compose.yaml",
 	"customizations": {
 		"vscode": {
 			"extensions": [
