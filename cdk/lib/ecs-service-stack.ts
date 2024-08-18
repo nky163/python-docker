@@ -35,12 +35,25 @@ export class EcsServiceStack extends Stack {
       resources: ['*'],
     }));
 
+    // ALB用のセキュリティグループを作成
+    const albSecurityGroup = new ec2.SecurityGroup(this, 'ALBSG', {
+      vpc: props.vpc,
+      description: 'Security group for ALB',
+      allowAllOutbound: true,
+    });
+
+    // ブルー環境用のIP制限を設定
+    albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow HTTPS access to Blue environment');
+
+    // グリーン環境用のIP制限を設定
+    albSecurityGroup.addIngressRule(ec2.Peer.ipv4('198.51.100.24/32'), ec2.Port.tcp(443), 'Allow HTTPS access to Green environment');
+
     // ALBの作成とリスナーの設定
     this.alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
       vpc: props.vpc,
       internetFacing: true,
+      securityGroup: albSecurityGroup, // ALBにセキュリティグループを設定
     });
-    
 
     // ターゲットグループの作成
     const blueTargetGroup = new elbv2.ApplicationTargetGroup(this, 'BlueTargetGroup', {
@@ -57,15 +70,29 @@ export class EcsServiceStack extends Stack {
       targetType: elbv2.TargetType.IP,
     });
 
-    // リスナーの作成とデフォルトターゲットグループの設定
+    // リスナーを作成（デフォルトはブルー環境のターゲットグループに接続）
     const listener = this.alb.addListener('Listener', {
       port: 443,
       certificates: [props.certificateStack.certificate], // メインの証明書
-      open: true,
       defaultTargetGroups: [blueTargetGroup], // デフォルトのターゲットグループを設定
+      open: false,
     });
     
-    listener.addCertificates('TestAppCertificate', [props.certificateStack.testCertificate]);
+    listener.addCertificates('GreenCertificate', [props.certificateStack.testCertificate]);
+
+    // ブルー環境のルールを追加
+    listener.addTargetGroups('BlueTG', {
+      priority: 10,
+      targetGroups: [blueTargetGroup],
+      conditions: [elbv2.ListenerCondition.hostHeaders([props.certificateStack.fqdn])],
+    });
+
+    // グリーン環境のルールを追加
+    listener.addTargetGroups('GreenTG', {
+      priority: 20,
+      targetGroups: [greenTargetGroup],
+      conditions: [elbv2.ListenerCondition.hostHeaders([props.certificateStack.testFqdn])],
+    });
 
     // ブルー環境用のセキュリティグループ
     const blueSecurityGroup = new ec2.SecurityGroup(this, 'BlueSG', {
@@ -73,8 +100,6 @@ export class EcsServiceStack extends Stack {
       description: 'Security group for Blue environment',
       allowAllOutbound: true,
     });
-    // ブルー環境へのIP制限を設定
-    blueSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(80), 'Allow HTTP access to Blue environment');
 
     // グリーン環境用のセキュリティグループ
     const greenSecurityGroup = new ec2.SecurityGroup(this, 'GreenSG', {
@@ -82,8 +107,6 @@ export class EcsServiceStack extends Stack {
       description: 'Security group for Green environment',
       allowAllOutbound: true,
     });
-    // グリーン環境へのIP制限を設定
-    greenSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(80), 'Allow HTTP access to Green environment');
 
     // タスク定義を作成
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
@@ -126,19 +149,6 @@ export class EcsServiceStack extends Stack {
       vpcSubnets: {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
       },
-    });
-
-    // ホストベースルーティングを設定
-    listener.addTargetGroups('BlueTG', {
-      priority: 10,
-      targetGroups: [blueTargetGroup],
-      conditions: [elbv2.ListenerCondition.hostHeaders(['app.example.com'])],
-    });
-
-    listener.addTargetGroups('GreenTG', {
-      priority: 20,
-      targetGroups: [greenTargetGroup],
-      conditions: [elbv2.ListenerCondition.hostHeaders(['test-app.example.com'])],
     });
 
     // 各サービスをターゲットグループに関連付け
