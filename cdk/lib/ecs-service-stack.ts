@@ -1,6 +1,7 @@
 import { Stack, StackProps, Duration } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as ecs_patterns from 'aws-cdk-lib/aws-ecs-patterns';
 import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
@@ -15,15 +16,14 @@ interface EcsServiceStackProps extends StackProps {
 
 export class EcsServiceStack extends Stack {
   
-  public readonly alb: elbv2.ApplicationLoadBalancer;
+  public readonly deploymentGroup: codedeploy.EcsDeploymentGroup;
   
   constructor(scope: Construct, id: string, props: EcsServiceStackProps) {
     super(scope, id, props);
-
+    
     const taskExecutionRole = new iam.Role(this, 'TaskExecutionRole', {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
-
     taskExecutionRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
@@ -34,142 +34,75 @@ export class EcsServiceStack extends Stack {
       ],
       resources: ['*'],
     }));
-
-    // ALB用のセキュリティグループを作成
-    const albSecurityGroup = new ec2.SecurityGroup(this, 'ALBSG', {
-      vpc: props.vpc,
-      description: 'Security group for ALB',
-      allowAllOutbound: true,
+    
+    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'FargateService', {
+      cluster: props.cluster,
+      taskSubnets: {
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      },
+      memoryLimitMiB: 512,
+      cpu: 256,
+      taskImageOptions: {
+        image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+        containerPort: 80,
+        executionRole: taskExecutionRole,
+      },
+      publicLoadBalancer: true,
+      openListener:false,
+      deploymentController: {
+        type: ecs.DeploymentControllerType.CODE_DEPLOY,
+      },
+      certificate: props.certificateStack.certificate,
+      domainName: props.certificateStack.fqdn,
+      domainZone: props.certificateStack.hostedZone,
+      desiredCount: 1,
     });
-
-    // ブルー環境用のIP制限を設定
-    albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow HTTPS access to Blue environment');
-
-    // グリーン環境用のIP制限を設定
-    albSecurityGroup.addIngressRule(ec2.Peer.ipv4('198.51.100.24/32'), ec2.Port.tcp(443), 'Allow HTTPS access to Green environment');
-
-    // ALBの作成とリスナーの設定
-    this.alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
-      vpc: props.vpc,
-      internetFacing: true,
-      securityGroup: albSecurityGroup, // ALBにセキュリティグループを設定
+    
+    fargateService.targetGroup.configureHealthCheck({
+      path: "/",
+      interval: Duration.seconds(30),
+      timeout: Duration.seconds(10),
+      healthyThresholdCount: 3,
+      unhealthyThresholdCount: 3,
     });
-
-    // ターゲットグループの作成
-    const blueTargetGroup = new elbv2.ApplicationTargetGroup(this, 'BlueTargetGroup', {
-      vpc: props.vpc,
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targetType: elbv2.TargetType.IP,
-    });
-
+    
+    const blueTargetGroup = fargateService.targetGroup;
     const greenTargetGroup = new elbv2.ApplicationTargetGroup(this, 'GreenTargetGroup', {
       vpc: props.vpc,
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
     });
+    const albSecurityGroup = fargateService.loadBalancer.connections.securityGroups[0];
+    albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow access from specific IP range');
 
-    // リスナーを作成（デフォルトはブルー環境のターゲットグループに接続）
-    const listener = this.alb.addListener('Listener', {
-      port: 443,
-      certificates: [props.certificateStack.certificate], // メインの証明書
-      defaultTargetGroups: [blueTargetGroup], // デフォルトのターゲットグループを設定
+    // グリーン環境 HTTPS: 8443を使用
+    const greenListener = fargateService.loadBalancer.addListener('GreenListener', {
+      port: 8443,
+      protocol: elbv2.ApplicationProtocol.HTTPS,
+      certificates: [props.certificateStack.certificate],
       open: false,
+      defaultTargetGroups: [greenTargetGroup],
     });
-    
-    listener.addCertificates('GreenCertificate', [props.certificateStack.testCertificate]);
-
-    // ブルー環境のルールを追加
-    listener.addTargetGroups('BlueTG', {
-      priority: 10,
-      targetGroups: [blueTargetGroup],
-      conditions: [
-        elbv2.ListenerCondition.sourceIps(['153.167.241.229/32']),
-        elbv2.ListenerCondition.hostHeaders([props.certificateStack.fqdn]),
-      ],
-    });
-
-    // グリーン環境のルールを追加
-    listener.addTargetGroups('GreenTG', {
-      priority: 20,
-      targetGroups: [greenTargetGroup],
-      conditions: [
-        elbv2.ListenerCondition.sourceIps(['153.167.241.229/32']),
-        elbv2.ListenerCondition.hostHeaders([props.certificateStack.testFqdn])
-      ],
-    });
-
-    // ブルー環境用のセキュリティグループ
-    const blueSecurityGroup = new ec2.SecurityGroup(this, 'BlueSG', {
+    const securityGroupForGreen = new ec2.SecurityGroup(this, 'GreenListenerSG', {
       vpc: props.vpc,
-      description: 'Security group for Blue environment',
+      description: 'Security group for Green',
       allowAllOutbound: true,
     });
+    securityGroupForGreen.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(8443), 'Allow HTTPS access from specific IP range');
+    greenListener.node.addDependency(securityGroupForGreen);
+    fargateService.loadBalancer.connections.addSecurityGroup(securityGroupForGreen);
 
-    // グリーン環境用のセキュリティグループ
-    const greenSecurityGroup = new ec2.SecurityGroup(this, 'GreenSG', {
-      vpc: props.vpc,
-      description: 'Security group for Green environment',
-      allowAllOutbound: true,
-    });
-
-    // タスク定義を作成
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      executionRole: taskExecutionRole,
-      memoryLimitMiB: 512,
-      cpu: 256,
-    });
-
-    // コンテナの設定
-    const container = taskDefinition.addContainer('AppContainer', {
-      image: ecs.ContainerImage.fromRegistry('amazon/amazon-ecs-sample'),
-      memoryLimitMiB: 512,
-    });
-
-    container.addPortMappings({
-      containerPort: 80,
-      protocol: ecs.Protocol.TCP,
-    });
-
-    // ブルー環境のFargateサービス
-    const blueService = new ecs.FargateService(this, 'BlueFargateService', {
-      cluster: props.cluster,
-      taskDefinition: taskDefinition,
-      desiredCount: 1,
-      securityGroups: [blueSecurityGroup],  // ブルー環境用のセキュリティグループ
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-      },
-      deploymentController: {
-        type: ecs.DeploymentControllerType.CODE_DEPLOY,
-      },
-    });
-
-    // グリーン環境のFargateサービス
-    const greenService = new ecs.FargateService(this, 'GreenFargateService', {
-      cluster: props.cluster,
-      taskDefinition: taskDefinition,
-      desiredCount: 1,
-      securityGroups: [greenSecurityGroup],  // グリーン環境用のセキュリティグループ
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-      },
-    });
-
-    // 各サービスをターゲットグループに関連付け
-    blueService.attachToApplicationTargetGroup(blueTargetGroup);
-    greenService.attachToApplicationTargetGroup(greenTargetGroup);
-
-    // CodeDeployデプロイグループの作成
-    const deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {
-      service: blueService,
+    // デプロイ設定
+    this.deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {
+      service: fargateService.service,
       blueGreenDeploymentConfig: {
-        blueTargetGroup: blueTargetGroup,
-        greenTargetGroup: greenTargetGroup,
-        listener: listener,
-        deploymentApprovalWaitTime: Duration.hours(1),
-        terminationWaitTime: Duration.minutes(5),
+        blueTargetGroup,
+        greenTargetGroup,
+        listener: fargateService.listener,
+        testListener: greenListener,
+        deploymentApprovalWaitTime: Duration.hours(0),  // デプロイを承認するまでの待機
+        terminationWaitTime: Duration.hours(12), // デプロイ成功後にブルー環境を削除するまでの待機時間
       },
       deploymentConfig: codedeploy.EcsDeploymentConfig.ALL_AT_ONCE,
     });

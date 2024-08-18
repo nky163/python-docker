@@ -3,7 +3,6 @@ import { VpcStack } from '../lib/vpc-stack';
 import { EcsClusterStack } from '../lib/ecs-cluster-stack';
 import { EcsServiceStack } from '../lib/ecs-service-stack';
 import { CertificateStack } from '../lib/certificate-stack';
-import { Route53Stack } from '../lib/route53-stack';
 import { EcrStack } from '../lib/ecr-stack';
 import { Tags } from 'aws-cdk-lib';
 
@@ -41,18 +40,10 @@ const ecrStack = new EcrStack(app, `${appName}-${stage}-EcrStack`, {
   env,
 })
 
-const route53Stack = new Route53Stack(app, `${appName}-${stage}-Route53-Stack`, {
-  env,
-  alb: ecsServiceStack.alb,
-  certificateStack: certificateStack,
-})
-
 ecsClusterStack.addDependency(vpcStack);
 ecsServiceStack.addDependency(ecsClusterStack);
 ecsServiceStack.addDependency(certificateStack);
 ecsServiceStack.addDependency(ecrStack);
-route53Stack.addDependency(certificateStack);
-route53Stack.addDependency(ecsServiceStack);
 
 Tags.of(app).add('Project', 'MyApp');
 Tags.of(app).add('Stage', stage);

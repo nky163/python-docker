@@ -75,29 +75,18 @@ export class EcsServiceStack extends Stack {
     const albSecurityGroup = fargateService.loadBalancer.connections.securityGroups[0];
     albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow access from specific IP range');
 
-    // 既存のリスナーにホストベースのルーティングルールを追加
-    fargateService.listener.addAction('HostBasedRouting', {
-      priority: 10,
-      conditions: [
-        elbv2.ListenerCondition.hostHeaders([props.certificateStack.testFqdn]),
-      ],
-      action: elbv2.ListenerAction.forward([greenTargetGroup]),
-    });
-        
-        
-    
     const testListenerSecurityGroup = new ec2.SecurityGroup(this, 'TestListenerSG', {
       vpc: props.vpc,
       description: 'Security group for Test Listener allowing access from specific IP',
       allowAllOutbound: true,
     });
     
-    testListenerSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow HTTPS access from specific IP range');
+    testListenerSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(8443), 'Allow HTTPS access from specific IP range');
     const testListener = fargateService.loadBalancer.addListener('TestListener', {
       port: 8443,
       open: false,
       protocol: elbv2.ApplicationProtocol.HTTPS,
-      certificates: [props.certificateStack.testCertificate],
+      certificates: [props.certificateStack.certificate],
       defaultTargetGroups: [greenTargetGroup],
     });
 
