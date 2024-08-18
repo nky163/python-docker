@@ -84,14 +84,20 @@ export class EcsServiceStack extends Stack {
     listener.addTargetGroups('BlueTG', {
       priority: 10,
       targetGroups: [blueTargetGroup],
-      conditions: [elbv2.ListenerCondition.hostHeaders([props.certificateStack.fqdn])],
+      conditions: [
+        elbv2.ListenerCondition.sourceIps(['153.167.241.229/32']),
+        elbv2.ListenerCondition.hostHeaders([props.certificateStack.fqdn]),
+      ],
     });
 
     // グリーン環境のルールを追加
     listener.addTargetGroups('GreenTG', {
       priority: 20,
       targetGroups: [greenTargetGroup],
-      conditions: [elbv2.ListenerCondition.hostHeaders([props.certificateStack.testFqdn])],
+      conditions: [
+        elbv2.ListenerCondition.sourceIps(['153.167.241.229/32']),
+        elbv2.ListenerCondition.hostHeaders([props.certificateStack.testFqdn])
+      ],
     });
 
     // ブルー環境用のセキュリティグループ
