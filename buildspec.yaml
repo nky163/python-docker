@@ -22,4 +22,6 @@ phases:
       - printf '[{"name":"my-app-container","imageUri":"%s"}]' $ECR_REPO_URI:latest > imagedefinitions.json
 
 artifacts:
-  files: imagedefinitions.json
+  files:
+    - imagedefinitions.json
+    - taskdef.json
