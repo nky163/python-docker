@@ -13,7 +13,7 @@ RUN poetry install
 # 商用(ECRプッシュ用)イメージ
 FROM python:3.12-slim-bullseye AS production
 WORKDIR /app
-COPY app/pyproject.toml app/poetry.lock app/src /app
+COPY app/pyproject.toml app/poetry.lock app/src /app/
 ENV PYTHONPATH="/app"
 RUN pip install poetry && poetry install
 CMD ["poetry", "run", "python", "/app/web/app.py"]

@@ -93,6 +93,7 @@ export class PipelineStack extends cdk.Stack {
         'ecs:RegisterTaskDefinition',
         'ecs:UpdateService',
         'codedeploy:*',
+        'ecr:GetAuthorizationToken',
       ],
       resources: ['*'],
     }));
