@@ -101,7 +101,7 @@ export class EcsServiceStack extends Stack {
         greenTargetGroup,
         listener: fargateService.listener,
         testListener: greenListener,
-        deploymentApprovalWaitTime: Duration.hours(0),  // デプロイを承認するまでの待機
+        // deploymentApprovalWaitTime: Duration.hours(1),  // デプロイを承認するまでの待機
         terminationWaitTime: Duration.hours(12), // デプロイ成功後にブルー環境を削除するまでの待機時間
       },
       deploymentConfig: codedeploy.EcsDeploymentConfig.ALL_AT_ONCE,

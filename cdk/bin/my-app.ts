@@ -5,6 +5,7 @@ import { EcsServiceStack } from '../lib/ecs-service-stack';
 import { CertificateStack } from '../lib/certificate-stack';
 import { EcrStack } from '../lib/ecr-stack';
 import { Tags } from 'aws-cdk-lib';
+import { PipelineStack } from '../lib/pipeline-stack';
 
 const app = new cdk.App();
 const appName = 'MyApp';
@@ -38,6 +39,12 @@ const ecsServiceStack = new EcsServiceStack(app, `${appName}-${stage}-EcsService
 
 const ecrStack = new EcrStack(app, `${appName}-${stage}-EcrStack`, {
   env,
+})
+
+const pipelineStack = new PipelineStack(app, `${appName}-${stage}-PipelineStack`, {
+  env,
+  ecsServiceStack: ecsServiceStack,
+  ecrStack: ecrStack,
 })
 
 ecsClusterStack.addDependency(vpcStack);

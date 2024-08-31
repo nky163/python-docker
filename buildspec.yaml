@@ -1,0 +1,25 @@
+version: 0.2
+
+env:
+  variables:
+    ECR_REPO_URI: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/my-ecr-repo"
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -f app/Dockerfile --target production --platform=linux/amd64 --no-cache --progress=plain . -t $ECR_REPO_URI:latest
+  post_build:
+    commands:
+      - echo Pushing the Docker image...
+      - docker push $ECR_REPO_URI:latest
+      - echo Writing image definitions file...
+      - printf '[{"name":"my-app-container","imageUri":"%s"}]' $ECR_REPO_URI:latest > imagedefinitions.json
+
+artifacts:
+  files: imagedefinitions.json
