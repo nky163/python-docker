@@ -32,6 +32,9 @@ phases:
       - sed -i -e "s#<LOG_REGION>#$AWS_DEFAULT_REGION#g" taskdef.json
       - echo Rewriting appspec file...
       - sed -i -e "s#<CONTAINER_NAME>#$CONTAINER_NAME#g" appspec.yaml
+      - sed -i -e "s#<ECR_REGION>#$AWS_DEFAULT_REGION#g" appspec.yaml
+      - sed -i -e "s#<ECR_REPO_URI>#$ECR_REPO_URI#g" appspec.yaml
+      - sed -i -e "s#<IMAGE_TAG>#$IMAGE_TAG#g" appspec.yaml
 artifacts:
   files:
     - imageDetail.json
