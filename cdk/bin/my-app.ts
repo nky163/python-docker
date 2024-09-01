@@ -35,9 +35,11 @@ const ecsServiceStack = new EcsServiceStack(app, `${appName}-${stage}-EcsService
   vpc: vpcStack.vpc,
   cluster: ecsClusterStack.cluster,
   certificateStack: certificateStack,
+  stage: stage
 });
 
-const ecrStack = new EcrStack(app, `${appName}-${stage}-EcrStack`, {
+// ECRは全環境共通
+const ecrStack = new EcrStack(app, `${appName}-EcrStack`, {
   env,
 })
 
@@ -50,7 +52,8 @@ const pipelineStack = new PipelineStack(app, `${appName}-${stage}-PipelineStack`
 ecsClusterStack.addDependency(vpcStack);
 ecsServiceStack.addDependency(ecsClusterStack);
 ecsServiceStack.addDependency(certificateStack);
-ecsServiceStack.addDependency(ecrStack);
+// pipelineStack.addDependency(ecrStack);
+// pipelineStack.addDependency(ecsServiceStack);
 
 Tags.of(app).add('Project', 'MyApp');
 Tags.of(app).add('Stage', stage);

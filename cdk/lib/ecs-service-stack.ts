@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecs_patterns from 'aws-cdk-lib/aws-ecs-patterns';
@@ -6,17 +6,21 @@ import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs'
 import { CertificateStack } from './certificate-stack';
+import { ALLOW_IPS } from '../variables/allow-ips';
 
 interface EcsServiceStackProps extends StackProps {
   vpc: ec2.Vpc;
   cluster: ecs.Cluster;
   certificateStack: CertificateStack;
+  stage: string;
 }
 
 export class EcsServiceStack extends Stack {
   
   public readonly deploymentGroup: codedeploy.EcsDeploymentGroup;
+  public readonly fargateService: ecs.FargateService;
   
   constructor(scope: Construct, id: string, props: EcsServiceStackProps) {
     super(scope, id, props);
@@ -35,7 +39,16 @@ export class EcsServiceStack extends Stack {
       resources: ['*'],
     }));
     
-    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'FargateService', {
+    const logGroup = new ecs.AwsLogDriver({
+      streamPrefix: 'FargateService',
+      logGroup: new logs.LogGroup(this, 'LogGroup', {
+        logGroupName: `/aws/ecs/${this.node.tryGetContext('stage')}/FargateService`,
+        removalPolicy: RemovalPolicy.DESTROY, // ロググループをスタック削除時に削除するオプション
+        retention: logs.RetentionDays.ONE_WEEK, // 必要に応じてログの保持期間を設定
+      }),
+    });
+    
+    const albFargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'FargateService', {
       cluster: props.cluster,
       taskSubnets: {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
@@ -46,6 +59,7 @@ export class EcsServiceStack extends Stack {
         image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
         containerPort: 80,
         executionRole: taskExecutionRole,
+        logDriver: logGroup,
       },
       publicLoadBalancer: true,
       openListener:false,
@@ -57,8 +71,9 @@ export class EcsServiceStack extends Stack {
       domainZone: props.certificateStack.hostedZone,
       desiredCount: 1,
     });
+    this.fargateService = albFargateService.service;
     
-    fargateService.targetGroup.configureHealthCheck({
+    albFargateService.targetGroup.configureHealthCheck({
       path: "/",
       interval: Duration.seconds(30),
       timeout: Duration.seconds(10),
@@ -66,18 +81,20 @@ export class EcsServiceStack extends Stack {
       unhealthyThresholdCount: 3,
     });
     
-    const blueTargetGroup = fargateService.targetGroup;
+    const blueTargetGroup = albFargateService.targetGroup;
     const greenTargetGroup = new elbv2.ApplicationTargetGroup(this, 'GreenTargetGroup', {
       vpc: props.vpc,
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
     });
-    const albSecurityGroup = fargateService.loadBalancer.connections.securityGroups[0];
-    albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow access from specific IP range');
+    const albSecurityGroup = albFargateService.loadBalancer.connections.securityGroups[0];
+    ALLOW_IPS[props.stage].blue.forEach(() => {
+      albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow access from specific IP range');
+    })
 
     // グリーン環境 HTTPS: 8443を使用
-    const greenListener = fargateService.loadBalancer.addListener('GreenListener', {
+    const greenListener = albFargateService.loadBalancer.addListener('GreenListener', {
       port: 8443,
       protocol: elbv2.ApplicationProtocol.HTTPS,
       certificates: [props.certificateStack.certificate],
@@ -89,17 +106,20 @@ export class EcsServiceStack extends Stack {
       description: 'Security group for Green',
       allowAllOutbound: true,
     });
-    securityGroupForGreen.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(8443), 'Allow HTTPS access from specific IP range');
+    ALLOW_IPS[props.stage].green.forEach(() => {
+      securityGroupForGreen.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(8443), 'Allow HTTPS access from specific IP range');
+    })
+    
     greenListener.node.addDependency(securityGroupForGreen);
-    fargateService.loadBalancer.connections.addSecurityGroup(securityGroupForGreen);
+    albFargateService.loadBalancer.connections.addSecurityGroup(securityGroupForGreen);
 
     // デプロイ設定
     this.deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {
-      service: fargateService.service,
+      service: albFargateService.service,
       blueGreenDeploymentConfig: {
         blueTargetGroup,
         greenTargetGroup,
-        listener: fargateService.listener,
+        listener: albFargateService.listener,
         testListener: greenListener,
         // deploymentApprovalWaitTime: Duration.hours(1),  // デプロイを承認するまでの待機
         terminationWaitTime: Duration.hours(12), // デプロイ成功後にブルー環境を削除するまでの待機時間
