@@ -1,0 +1,27 @@
+version: '0.2'
+env:
+  shell: '/bin/bash'
+phases:
+  install:
+    runtime-versions:
+      nodejs: latest
+  pre_build:
+    commands:
+      - echo Installing dependencies...
+      - cd cdk
+      - npm install -g aws-cdk
+      - npm install
+      - cd ..
+  build:
+    commands:
+      - echo Synthesizing CDK templates...
+      - cd cdk
+      - cdk synth --output=../cdk.out
+      - cdk deploy --all --require-approval never
+  post_build:
+    commands:
+      - echo Copying CDK templates to root...
+      - cp cdk.out/*.template.json template.yaml
+artifacts:
+  files:
+    - template.yaml

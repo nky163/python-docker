@@ -18,11 +18,21 @@ export class PipelineStack extends cdk.Stack {
     
     const githubToken = cdk.SecretValue.secretsManager('my-github-token');
     
-    const buildProject = new codebuild.PipelineProject(this, 'BuildProject', {
+    const cdkBuildProject = new codebuild.PipelineProject(this, 'CdkBuildProject', {
       environment: {
-        buildImage: codebuild.LinuxBuildImage.STANDARD_5_0,
+        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
+      },
+      buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec-cdk.yaml'),
+      environmentVariables: {}
+    })
+    
+    
+    const dockerBuildProject = new codebuild.PipelineProject(this, 'DockerBuildProject', {
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_5,
         privileged: true,
       },
+      buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec-docker.yaml'),
       environmentVariables: {
         'AWS_DEFAULT_REGION': {
           value: `${cdk.Aws.REGION}`
@@ -46,10 +56,9 @@ export class PipelineStack extends cdk.Stack {
           value: props.ecsServiceStack.fargateService.taskDefinition.defaultContainer?.logDriverConfig?.options?.['awslogs-group']
         },
       },
-      buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yaml'),
     });
     
-    buildProject.addToRolePolicy(new iam.PolicyStatement({
+    dockerBuildProject.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'ecr:BatchCheckLayerAvailability',
         'ecr:CompleteLayerUpload',
@@ -86,31 +95,44 @@ export class PipelineStack extends cdk.Stack {
     });
 
     // ビルドステージ
-    const buildOutput = new codepipeline.Artifact();
+    const cdkBuildOutput = new codepipeline.Artifact();
+    pipeline.addStage({
+      stageName: 'CDKDeploy',
+      actions: [
+        new codepipeline_actions.CodeBuildAction({
+          actionName: 'CDKDeploy',
+          project: cdkBuildProject,
+          input: sourceOutput,
+          outputs: [cdkBuildOutput],
+        }),
+      ]
+    });
+    
+    const dockerBuildOutput = new codepipeline.Artifact();
     pipeline.addStage({
       stageName: 'Build',
       actions: [
         new codepipeline_actions.CodeBuildAction({
-          actionName: 'Build',
-          project: buildProject,
+          actionName: 'DockerBuild',
+          project: dockerBuildProject,
           input: sourceOutput,
-          outputs: [buildOutput],
+          outputs: [dockerBuildOutput],
         })
       ]
     });
 
     // デプロイステージ
     pipeline.addStage({
-      stageName: 'Deploy',
+      stageName: 'ECSDeploy',
       actions: [
         new codepipeline_actions.CodeDeployEcsDeployAction({
           actionName: 'Deploy',
           deploymentGroup: props.ecsServiceStack.deploymentGroup,
-          appSpecTemplateFile: buildOutput.atPath('appspec.yaml'),
-          taskDefinitionTemplateFile: buildOutput.atPath('taskdef.json'),
+          appSpecTemplateFile: dockerBuildOutput.atPath('appspec.yaml'),
+          taskDefinitionTemplateFile: dockerBuildOutput.atPath('taskdef.json'),
           containerImageInputs: [
             {
-              input: buildOutput,
+              input: dockerBuildOutput,
               taskDefinitionPlaceholder: "IMAGE1_NAME",
             }
           ]
