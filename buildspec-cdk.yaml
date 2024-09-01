@@ -20,7 +20,8 @@ phases:
   post_build:
     commands:
       - echo Copying CDK templates to root...
-      - cp cdk/cdk.out/*.template.json template.yaml
+      - mkdir -p templates
+      - cp cdk/cdk.out/*.template.json templates/
 artifacts:
   files:
-    - template.yaml
+    - templates/**/*

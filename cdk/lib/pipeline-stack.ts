@@ -110,10 +110,10 @@ export class PipelineStack extends cdk.Stack {
     
     const dockerBuildOutput = new codepipeline.Artifact();
     pipeline.addStage({
-      stageName: 'Build',
+      stageName: 'DockerBuild',
       actions: [
         new codepipeline_actions.CodeBuildAction({
-          actionName: 'DockerBuild',
+          actionName: 'Build',
           project: dockerBuildProject,
           input: sourceOutput,
           outputs: [dockerBuildOutput],
