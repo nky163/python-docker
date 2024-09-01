@@ -21,7 +21,7 @@
     "options": {
       "awslogs-group": "<LOG_GROUP>",
       "awslogs-region": "<LOG_REGION>",
-      "awslogs-stream@prefix": "<CONTAINER_NAME>"
+      "awslogs-stream-prefix": "<CONTAINER_NAME>"
     }
   },
   "requiresCompatibilities": [
