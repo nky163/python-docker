@@ -24,4 +24,4 @@ phases:
       - cp cdk.out/*.template.json templates/
 artifacts:
   files:
-    - templates/**/*
+    - cdk/templates/**/*
