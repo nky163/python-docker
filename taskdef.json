@@ -6,6 +6,14 @@
     {
       "name": "<CONTAINER_NAME>",
       "image": "<IMAGE1_NAME>",
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "<LOG_GROUP>",
+          "awslogs-region": "<LOG_REGION>",
+          "awslogs-stream-prefix": "<CONTAINER_NAME>"
+        }
+      },
       "essential": true,
       "portMappings": [
         {
@@ -16,14 +24,6 @@
       ]
     }
   ],
-  "logConfiguration": {
-    "logDriver": "awslogs",
-    "options": {
-      "awslogs-group": "<LOG_GROUP>",
-      "awslogs-region": "<LOG_REGION>",
-      "awslogs-stream-prefix": "<CONTAINER_NAME>"
-    }
-  },
   "requiresCompatibilities": [
     "FARGATE"
   ],
