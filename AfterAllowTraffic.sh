@@ -10,5 +10,5 @@ $(aws ecr get-login --no-include-email --region $REGION)
 
 # イメージにdeployタグを付ける
 docker pull ${ECR_REPO_URI}:${IMAGE_TAG}
-docker tag ${ECR_REPO_URI}:${IMAGE_TAG} ${ECR_REPO_URI}:deploy
-docker push ${ECR_REPO_URI}:deploy
+docker tag ${ECR_REPO_URI}:${IMAGE_TAG} ${ECR_REPO_URI}:dev-deploy
+docker push ${ECR_REPO_URI}:dev-deploy

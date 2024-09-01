@@ -13,8 +13,8 @@ hooks:
     - location: AfterAllowTraffic.sh
       timeout: 300
       runas: root
-      env:
+      environment:
         variables:
-          REGION: <ECR_REGION>
-          ECR_REPO_URI: <ECR_REPO_URI>
-          IMAGE_TAG: <IMAGE_TAG>
+          REGION: "<ECR_REGION>"
+          ECR_REPO_URI: "<ECR_REPO_URI>"
+          IMAGE_TAG: "<IMAGE_TAG>"
