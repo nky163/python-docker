@@ -39,15 +39,6 @@ export class EcsServiceStack extends Stack {
       resources: ['*'],
     }));
     
-    const logGroup = new ecs.AwsLogDriver({
-      streamPrefix: 'FargateService',
-      logGroup: new logs.LogGroup(this, 'LogGroup', {
-        logGroupName: `/aws/ecs/${this.node.tryGetContext('stage')}/FargateService`,
-        removalPolicy: RemovalPolicy.DESTROY, // ロググループをスタック削除時に削除するオプション
-        retention: logs.RetentionDays.ONE_WEEK, // 必要に応じてログの保持期間を設定
-      }),
-    });
-    
     const albFargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'FargateService', {
       cluster: props.cluster,
       taskSubnets: {
@@ -56,11 +47,22 @@ export class EcsServiceStack extends Stack {
       memoryLimitMiB: 512,
       cpu: 256,
       taskImageOptions: {
+        family: `${props.stage}-taskdef`,
+        containerName: `${props.stage}-container`,
         image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
         containerPort: 80,
         executionRole: taskExecutionRole,
-        logDriver: logGroup,
+        logDriver: new ecs.AwsLogDriver({
+          streamPrefix: 'container',
+          logGroup: new logs.LogGroup(this, 'LogGroup', {
+            logGroupName: `/aws/ecs/${this.node.tryGetContext('stage')}`,
+            removalPolicy: RemovalPolicy.DESTROY, // ロググループをスタック削除時に削除するオプション
+            retention: logs.RetentionDays.ONE_WEEK, // 必要に応じてログの保持期間を設定
+          }),
+        }),
       },
+      serviceName: `${props.stage}-service`,
+      loadBalancerName: `${props.stage}-lb`,
       publicLoadBalancer: true,
       openListener:false,
       deploymentController: {
@@ -116,6 +118,7 @@ export class EcsServiceStack extends Stack {
     // デプロイ設定
     this.deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {
       service: albFargateService.service,
+      deploymentGroupName: `${props.stage}-codedeploy-group`,
       blueGreenDeploymentConfig: {
         blueTargetGroup,
         greenTargetGroup,

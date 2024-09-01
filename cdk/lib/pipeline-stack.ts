@@ -24,53 +24,31 @@ export class PipelineStack extends cdk.Stack {
         privileged: true,
       },
       environmentVariables: {
+        'AWS_DEFAULT_REGION': {
+          value: `${cdk.Aws.REGION}`
+        },
         'ECR_REPO_URI': {
           value: `${cdk.Aws.ACCOUNT_ID}.dkr.ecr.${cdk.Aws.REGION}.amazonaws.com/${props.ecrStack.repository.repositoryName}`
         },
+        'EXECUTION_ROLE_ARN': {
+          value: props.ecsServiceStack.fargateService.taskDefinition.executionRole?.roleArn
+        },
+        'TASK_ROLE_ARN': {
+          value: props.ecsServiceStack.fargateService.taskDefinition.taskRole.roleArn
+        },
         'TASK_FAMILY': {
           value: props.ecsServiceStack.fargateService.taskDefinition.family
-        }
+        },
+        'CONTAINER_NAME': {
+          value: props.ecsServiceStack.fargateService.serviceName
+        },
+        'LOG_GROUP': {
+          value: props.ecsServiceStack.fargateService.taskDefinition.defaultContainer?.logDriverConfig?.options?.['awslogs-group']
+        },
       },
-      buildSpec: codebuild.BuildSpec.fromObject({
-        version: '0.2',
-        phases: {
-          pre_build: {
-            commands: [
-              'echo Logging in to Amazon ECR...',
-              `aws ecr get-login-password --region ${cdk.Aws.REGION} | docker login --username AWS --password-stdin $ECR_REPO_URI`,
-              'echo Fetching current task definition...',
-              'export CURRENT_TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY)',
-              'echo Current task definition fetched.'
-            ],
-          },
-          build: {
-            commands: [
-              'echo Build started on `date`',
-              'echo Building the Docker image...',
-              'docker build -f app/Dockerfile --target production --platform=linux/amd64 --no-cache --progress=plain -t $ECR_REPO_URI:latest .',
-              'docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$CODEBUILD_RESOLVED_SOURCE_VERSION',
-            ],
-          },
-          post_build: {
-            commands: [
-              'echo Pushing the Docker image...',
-              'docker push $ECR_REPO_URI:$CODEBUILD_RESOLVED_SOURCE_VERSION',
-              'echo Writing image definitions file...',
-              `printf '[{"name":"my-app-container","imageUri":"%s"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
-              'echo Updating task definition with new image...',
-              `echo $CURRENT_TASK_DEF_JSON | jq --arg IMAGE_URI "$ECR_REPOSITORY_URI:latest" '.taskDefinition | .containerDefinitions[0].image = $IMAGE_URI' > new-taskdef.json`,
-              'echo Task definition updated.',
-            ],
-          },
-        },
-        artifacts: {
-          files: [
-            'new-taskdef.json',
-            'imagedefinitions.json'
-          ],
-        },
-      }),
+      buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
     });
+    
     buildProject.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'ecr:BatchCheckLayerAvailability',
@@ -80,9 +58,6 @@ export class PipelineStack extends cdk.Stack {
         'ecr:PutImage',
         'ecr:UploadLayerPart',
         'ecr:GetAuthorizationToken',
-        'ecs:RegisterTaskDefinition',
-        'ecs:UpdateService',
-        'codedeploy:*',
       ],
       resources: ['*'],
     }));
@@ -130,8 +105,14 @@ export class PipelineStack extends cdk.Stack {
         new codepipeline_actions.CodeDeployEcsDeployAction({
           actionName: 'Deploy',
           deploymentGroup: props.ecsServiceStack.deploymentGroup,
-          appSpecTemplateInput: buildOutput,
-          taskDefinitionTemplateInput: buildOutput,
+          appSpecTemplateFile: buildOutput.atPath('appspec.yaml'),
+          taskDefinitionTemplateFile: buildOutput.atPath('taskdef.json'),
+          containerImageInputs: [
+            {
+              input: buildOutput,
+              taskDefinitionPlaceholder: "IMAGE1_NAME",
+            }
+          ]
         })
       ]
     });

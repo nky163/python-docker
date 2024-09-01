@@ -1,0 +1,39 @@
+version: '0.2'
+env:
+  shell: '/bin/bash'
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
+      - echo Fetching current task definition...
+      - echo Current task definition fetched.
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -f app/Dockerfile --target production --platform=linux/amd64 --no-cache --progress=plain -t $ECR_REPO_URI:latest .
+      - docker tag $ECR_REPO_URI:latest $ECR_REPO_URI:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Pushing the Docker image...
+      - docker push $ECR_REPO_URI:latest
+      - docker push $ECR_REPO_URI:$IMAGE_TAG
+      - echo Writing image definitions file...
+      - printf '[{"ImageURI":"%s"}]' $ECR_REPO_URI:$IMAGE_TAG > imageDetail.json
+      - echo Updating task definition...
+      - sed -i -e "s#<TASK_FAMILY>#$TASK_FAMILY#g" taskdef.json
+      - sed -i -e "s#<TASK_ROLE_ARN>#$TASK_ROLE_ARN#g" taskdef.json
+      - sed -i -e "s#<EXECUTION_ROLE_ARN>#$EXECUTION_ROLE_ARN#g" taskdef.json
+      - sed -i -e "s#<CONTAINER_NAME>#$CONTAINER_NAME#g" taskdef.json
+      - sed -i -e "s#<LOG_GROUP>#$LOG_GROUP#g" taskdef.json
+      - sed -i -e "s#<LOG_REGION>#$AWS_DEFAULT_REGION#g" taskdef.json
+      - echo Rewriting appspec file...
+      - sed -i -e "s#<CONTAINER_NAME>#$CONTAINER_NAME#g" appspec.yaml
+artifacts:
+  files:
+    - imageDetail.json
+    - taskdef.json
+    - appspec.yaml
