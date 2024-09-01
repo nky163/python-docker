@@ -21,7 +21,7 @@ phases:
     commands:
       - echo Copying CDK templates to root...
       - mkdir -p templates
-      - cp cdk/cdk.out/*.template.json templates/
+      - ls -al
 artifacts:
   files:
     - templates/**/*
