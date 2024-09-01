@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # 環境変数の使用
-REGION=${REGION}
-ECR_REPO_URI=${ECR_REPO_URI}
-IMAGE_TAG=${IMAGE_TAG}
+REGION="<ECR_REGION>"
+ECR_REPO_URI="<ECR_REPO_URI>"
+IMAGE_TAG="<IMAGE_TAG>"
 
 # AWS CLIでECRにログイン
 $(aws ecr get-login --no-include-email --region $REGION)
