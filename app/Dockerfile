@@ -1,5 +1,5 @@
 # 開発用イメージ
-FROM mcr.microsoft.com/devcontainers/python:1-3.12-bullseye AS dvelopment
+FROM mcr.microsoft.com/devcontainers/python:1-3.12-bullseye AS development
 USER vscode
 WORKDIR /myapp
 COPY --chown=vscode:vscode . .
