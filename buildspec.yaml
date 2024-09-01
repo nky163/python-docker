@@ -19,10 +19,10 @@ phases:
   post_build:
     commands:
       - echo Pushing the Docker image...
-      - docker push $ECR_REPO_URI:latest
       - docker push $ECR_REPO_URI:$IMAGE_TAG
+      - docker push $ECR_REPO_URI:latest
       - echo Writing image definitions file...
-      - printf '[{"ImageURI":"%s"}]' $ECR_REPO_URI:$IMAGE_TAG > imageDetail.json
+      - printf '{"ImageURI":"%s"}' $ECR_REPO_URI:$IMAGE_TAG > imageDetail.json
       - echo Updating task definition...
       - sed -i -e "s#<TASK_FAMILY>#$TASK_FAMILY#g" taskdef.json
       - sed -i -e "s#<TASK_ROLE_ARN>#$TASK_ROLE_ARN#g" taskdef.json

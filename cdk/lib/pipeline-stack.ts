@@ -46,7 +46,7 @@ export class PipelineStack extends cdk.Stack {
           value: props.ecsServiceStack.fargateService.taskDefinition.defaultContainer?.logDriverConfig?.options?.['awslogs-group']
         },
       },
-      buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yml'),
+      buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec.yaml'),
     });
     
     buildProject.addToRolePolicy(new iam.PolicyStatement({
@@ -64,6 +64,7 @@ export class PipelineStack extends cdk.Stack {
 
     // パイプラインの定義
     const pipeline = new codepipeline.Pipeline(this, 'Pipeline', {
+      pipelineType: codepipeline.PipelineType.V2,
       pipelineName: 'MyAppPipeline',
       restartExecutionOnUpdate: true,
     });
