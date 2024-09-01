@@ -8,8 +8,3 @@ Resources:
           ContainerName: <CONTAINER_NAME>
           ContainerPort: 80
         PlatformVersion: "1.4.0"
-hooks:
-  AfterAllowTraffic:
-    - location: AfterAllowTraffic.sh
-      timeout: 300
-      runas: root
