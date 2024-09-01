@@ -25,6 +25,7 @@ export class PipelineStack extends cdk.Stack {
       buildSpec: codebuild.BuildSpec.fromSourceFilename('buildspec-cdk.yaml'),
       environmentVariables: {}
     })
+    cdkBuildProject.role?.addManagedPolicy(iam.ManagedPolicy.fromAwsManagedPolicyName('AdministratorAccess'));
     
     
     const dockerBuildProject = new codebuild.PipelineProject(this, 'DockerBuildProject', {
