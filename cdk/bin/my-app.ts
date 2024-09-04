@@ -6,6 +6,7 @@ import { CertificateStack } from '../lib/certificate-stack';
 import { EcrStack } from '../lib/ecr-stack';
 import { Tags } from 'aws-cdk-lib';
 import { PipelineStack } from '../lib/pipeline-stack';
+import { RdsStack } from '../lib/rds-stack';
 
 const app = new cdk.App();
 const appName = 'MyApp';
@@ -17,6 +18,11 @@ const env = {
 
 const vpcStack = new VpcStack(app, `${appName}-${stage}-VpcStack`, {
   env,
+});
+
+const rdsStack = new RdsStack(app, `${appName}-${stage}-RdsStack`, { // RDSスタックを追加
+  env,
+  vpc: vpcStack.vpc,
 });
 
 const certificateStack = new CertificateStack(app, `${appName}-${stage}-CertificateStack`, {
@@ -35,7 +41,8 @@ const ecsServiceStack = new EcsServiceStack(app, `${appName}-${stage}-EcsService
   vpc: vpcStack.vpc,
   cluster: ecsClusterStack.cluster,
   certificateStack: certificateStack,
-  stage: stage
+  stage: stage,
+  rdsCluster: rdsStack.cluster
 });
 
 // ECRは全環境共通

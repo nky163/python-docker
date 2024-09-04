@@ -9,12 +9,14 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs'
 import { CertificateStack } from './certificate-stack';
 import { ALLOW_IPS } from '../variables/allow-ips';
-
+import * as rds from 'aws-cdk-lib/aws-rds';
+import { RdsStack } from './rds-stack';
 interface EcsServiceStackProps extends StackProps {
   vpc: ec2.Vpc;
   cluster: ecs.Cluster;
   certificateStack: CertificateStack;
   stage: string;
+  rdsCluster: rds.DatabaseCluster;
 }
 
 export class EcsServiceStack extends Stack {
@@ -35,10 +37,12 @@ export class EcsServiceStack extends Stack {
         'ecr:BatchGetImage',
         'ecr:BatchCheckLayerAvailability',
         'ecr:GetAuthorizationToken',
+        'secretsmanager:GetSecretValue',  // シークレットマネージャーのアクセス許可
+        'secretsmanager:DescribeSecret'
       ],
       resources: ['*'],
     }));
-    
+    const dbSecret = props.rdsCluster.secret;
     const albFargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'FargateService', {
       cluster: props.cluster,
       taskSubnets: {
@@ -52,6 +56,12 @@ export class EcsServiceStack extends Stack {
         image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
         containerPort: 80,
         executionRole: taskExecutionRole,
+        secrets: {
+          'DB_USERNAME': ecs.Secret.fromSecretsManager(dbSecret!, 'username'),
+          'DB_PASSWORD': ecs.Secret.fromSecretsManager(dbSecret!, 'password'),
+          'DB_HOST': ecs.Secret.fromSecretsManager(dbSecret!, 'host'),
+          'DB_NAME': ecs.Secret.fromSecretsManager(dbSecret!, 'dbname'),
+        },
         logDriver: new ecs.AwsLogDriver({
           streamPrefix: 'container',
           logGroup: new logs.LogGroup(this, 'LogGroup', {
@@ -114,6 +124,11 @@ export class EcsServiceStack extends Stack {
     
     greenListener.node.addDependency(securityGroupForGreen);
     albFargateService.loadBalancer.connections.addSecurityGroup(securityGroupForGreen);
+    
+    const fargateSecurityGroup = albFargateService.service.connections.securityGroups[0];
+    
+    // RDSのセキュリティグループにFargateのセキュリティグループからのアクセスを許可
+    props.rdsCluster.connections.allowFrom(fargateSecurityGroup, ec2.Port.tcp(3306), 'Allow Fargate access to RDS');
 
     // デプロイ設定
     this.deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {

@@ -1,3 +1,4 @@
+// lib/vpc-stack.ts
 import * as cdk from 'aws-cdk-lib';
 import { Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
@@ -9,9 +10,27 @@ export class VpcStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
+    // VPCの作成
     this.vpc = new ec2.Vpc(this, 'MyVpc', {
-      maxAzs: 2,
-      natGateways: 1,
+      maxAzs: 2, // 使用するアベイラビリティゾーンの数
+      natGateways: 1, // NAT Gatewayの数
+      subnetConfiguration: [
+        {
+          cidrMask: 24,
+          name: 'public-subnet',
+          subnetType: ec2.SubnetType.PUBLIC,
+        },
+        {
+          cidrMask: 24,
+          name: 'private-subnet',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, // インターネットアクセスが可能なプライベートサブネット
+        },
+        {
+          cidrMask: 28,
+          name: 'isolated-subnet',
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED, // インターネットアクセスができない完全なプライベートサブネット
+        }
+      ],
     });
   }
 }
