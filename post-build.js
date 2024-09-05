@@ -1,28 +1,27 @@
 const AWS = require('aws-sdk');
 const codecommit = new AWS.CodeCommit({ region: process.env.AWS_REGION });
 
-// 環境変数からリポジトリ名を取得
 const repositoryName = process.env.REPOSITORY_NAME;
-const pullRequestId = process.env.CODEBUILD_SOURCE_VERSION.split('/')[2]; // PR IDの取得
-const buildStatus = process.env.BUILD_STATUS; // CodeBuildのビルドステータス
+const pullRequestId = process.env.CODEBUILD_SOURCE_VERSION.split('/')[2]; // プルリクエストID
 
-// バッジURLの決定
-let badgeUrl = '';
-if (buildStatus === 'SUCCEEDED') {
-    badgeUrl = 'https://img.shields.io/badge/build-success-brightgreen';
-} else {
-    badgeUrl = 'https://img.shields.io/badge/build-failure-red';
-}
+const badgeUrl = `https://codebuild.${process.env.AWS_REGION}.amazonaws.com/badges/${process.env.CODEBUILD_PROJECT_NAME}/build-badge.svg`;
 
-const commentContent = `ビルドステータス: ${buildStatus} ![ビルドバッジ](${badgeUrl})`;
-
-const params = {
-    pullRequestId: pullRequestId,
-    repositoryName: repositoryName,
-    content: commentContent,
+// プルリクエストにコメントを投稿する関数
+const postComment = async (content) => {
+    const params = {
+        pullRequestId: pullRequestId,
+        repositoryName: repositoryName,
+        content: content,
+    };
+    try {
+        await codecommit.postCommentForPullRequest(params).promise();
+        console.log('Comment posted:', content);
+    } catch (err) {
+        console.error('Error posting comment:', err);
+    }
 };
 
-codecommit.postCommentForPullRequest(params, (err, data) => {
-    if (err) console.log(err, err.stack);
-    else console.log(data);
-});
+// ビルドバッジをプルリクエストに投稿
+const badgeComment = `![Build Status](${badgeUrl})`;
+
+postComment(badgeComment);
