@@ -27,7 +27,7 @@ export class VpcStack extends Stack {
         },
         {
           cidrMask: 28,
-          name: 'isolated-subnet',
+          name: 'rds-subnet',
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED, // インターネットアクセスができない完全なプライベートサブネット
         }
       ],

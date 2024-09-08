@@ -1,0 +1,45 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      docker: 20
+    commands:
+      - echo "Installing dependencies"
+      - yum install -y jq  # `jq` コマンドを使ってJSONを処理するためにインストール
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+  build:
+    commands:
+      - echo "Starting the build process..."
+      # ここにビルド処理を追加
+  post_build:
+    commands:
+      - echo "Post-build phase: Adding tag to ECR image using put-image"
+      - >
+        REPOSITORY_NAME=$(echo $ECR_IMAGE_URL | cut -d'/' -f2 | cut -d':' -f1)
+      - >
+        IMAGE_TAG=$(echo $ECR_IMAGE_URL | cut -d':' -f2)
+      - echo "Repository Name: $REPOSITORY_NAME"
+      - echo "Image Tag: $IMAGE_TAG"
+      - IMAGE_DETAILS=$(aws ecr describe-images --repository-name $REPOSITORY_NAME --image-ids imageTag=$IMAGE_TAG --region $AWS_REGION)
+      - IMAGE_DIGEST=$(echo $IMAGE_DETAILS | jq -r '.imageDetails[0].imageDigest')
+      - EXISTING_TAGS=$(echo $IMAGE_DETAILS | jq -r '.imageDetails[0].imageTags[]')
+      - >
+        if [[ $EXISTING_TAGS == *"$NEW_TAG"* ]]; then
+          echo "Tag '$NEW_TAG' already exists for image digest '$IMAGE_DIGEST'."
+        else
+          # put-imageを使って新しいタグを追加
+          aws ecr put-image \
+            --repository-name $REPOSITORY_NAME \
+            --image-tag $NEW_TAG \
+            --image-manifest $(aws ecr batch-get-image --repository-name $REPOSITORY_NAME --image-ids imageDigest=$IMAGE_DIGEST --region $AWS_REGION --query 'images[0].imageManifest' --output text) \
+            --region $AWS_REGION
+          echo "Tag '$NEW_TAG' added to image digest '$IMAGE_DIGEST'."
+        fi
+
+artifacts:
+  files:
+    - '**/*'

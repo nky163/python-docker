@@ -1,4 +1,4 @@
-import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy, CfnOutput, Fn } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecs_patterns from 'aws-cdk-lib/aws-ecs-patterns';
@@ -9,14 +9,13 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs'
 import { CertificateStack } from './certificate-stack';
 import { ALLOW_IPS } from '../variables/allow-ips';
-import * as rds from 'aws-cdk-lib/aws-rds';
 import { RdsStack } from './rds-stack';
 interface EcsServiceStackProps extends StackProps {
-  vpc: ec2.Vpc;
+  vpc: ec2.IVpc;
   cluster: ecs.Cluster;
   certificateStack: CertificateStack;
   stage: string;
-  rdsCluster: rds.DatabaseCluster;
+  suffix: string;
 }
 
 export class EcsServiceStack extends Stack {
@@ -42,8 +41,7 @@ export class EcsServiceStack extends Stack {
       ],
       resources: ['*'],
     }));
-    const dbSecret = props.rdsCluster.secret;
-    const albFargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'FargateService', {
+    const albFargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, `FargateService-${props.stage}${props.suffix}`, {
       cluster: props.cluster,
       taskSubnets: {
         subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
@@ -51,28 +49,22 @@ export class EcsServiceStack extends Stack {
       memoryLimitMiB: 512,
       cpu: 256,
       taskImageOptions: {
-        family: `${props.stage}-taskdef`,
-        containerName: `${props.stage}-container`,
+        family: `${props.stage}${props.suffix}-taskdef`,
+        containerName: `${props.stage}${props.suffix}-container`,
         image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
         containerPort: 80,
         executionRole: taskExecutionRole,
-        secrets: {
-          'DB_USERNAME': ecs.Secret.fromSecretsManager(dbSecret!, 'username'),
-          'DB_PASSWORD': ecs.Secret.fromSecretsManager(dbSecret!, 'password'),
-          'DB_HOST': ecs.Secret.fromSecretsManager(dbSecret!, 'host'),
-          'DB_NAME': ecs.Secret.fromSecretsManager(dbSecret!, 'dbname'),
-        },
         logDriver: new ecs.AwsLogDriver({
           streamPrefix: 'container',
           logGroup: new logs.LogGroup(this, 'LogGroup', {
-            logGroupName: `/aws/ecs/${props.stage}`,
+            logGroupName: `/aws/ecs/${props.stage}${props.suffix}`,
             removalPolicy: RemovalPolicy.DESTROY, // ロググループをスタック削除時に削除するオプション
             retention: logs.RetentionDays.ONE_WEEK, // 必要に応じてログの保持期間を設定
           }),
         }),
       },
-      serviceName: `${props.stage}-service`,
-      loadBalancerName: `${props.stage}-lb`,
+      serviceName: `${props.stage}${props.suffix}-service`,
+      loadBalancerName: `${props.stage}${props.suffix}-lb`,
       publicLoadBalancer: true,
       openListener:false,
       deploymentController: {
@@ -84,6 +76,7 @@ export class EcsServiceStack extends Stack {
       desiredCount: 1,
     });
     this.fargateService = albFargateService.service;
+    
     
     albFargateService.targetGroup.configureHealthCheck({
       path: "/",
@@ -100,9 +93,8 @@ export class EcsServiceStack extends Stack {
       protocol: elbv2.ApplicationProtocol.HTTP,
       targetType: elbv2.TargetType.IP,
     });
-    const albSecurityGroup = albFargateService.loadBalancer.connections.securityGroups[0];
     ALLOW_IPS[props.stage].blue.forEach(() => {
-      albSecurityGroup.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow access from specific IP range');
+      albFargateService.loadBalancer.connections.allowFrom(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(443), 'Allow access from specific IP range');
     })
 
     // グリーン環境 HTTPS: 8443を使用
@@ -113,27 +105,16 @@ export class EcsServiceStack extends Stack {
       open: false,
       defaultTargetGroups: [greenTargetGroup],
     });
-    const securityGroupForGreen = new ec2.SecurityGroup(this, 'GreenListenerSG', {
-      vpc: props.vpc,
-      description: 'Security group for Green',
-      allowAllOutbound: true,
-    });
+    
     ALLOW_IPS[props.stage].green.forEach(() => {
-      securityGroupForGreen.addIngressRule(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(8443), 'Allow HTTPS access from specific IP range');
+      albFargateService.loadBalancer.connections.allowFrom(ec2.Peer.ipv4('153.167.241.229/32'), ec2.Port.tcp(8443), 'Allow HTTPS access from specific IP range');
     })
     
-    greenListener.node.addDependency(securityGroupForGreen);
-    albFargateService.loadBalancer.connections.addSecurityGroup(securityGroupForGreen);
-    
-    const fargateSecurityGroup = albFargateService.service.connections.securityGroups[0];
-    
-    // RDSのセキュリティグループにFargateのセキュリティグループからのアクセスを許可
-    props.rdsCluster.connections.allowFrom(fargateSecurityGroup, ec2.Port.tcp(3306), 'Allow Fargate access to RDS');
 
     // デプロイ設定
     this.deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {
       service: albFargateService.service,
-      deploymentGroupName: `${props.stage}-codedeploy-group`,
+      deploymentGroupName: `${props.stage}${props.suffix}-codedeploy-group`,
       blueGreenDeploymentConfig: {
         blueTargetGroup,
         greenTargetGroup,
@@ -144,5 +125,14 @@ export class EcsServiceStack extends Stack {
       },
       deploymentConfig: codedeploy.EcsDeploymentConfig.ALL_AT_ONCE,
     });
+    
+    
+    const rdsSg = ec2.SecurityGroup.fromSecurityGroupId(this, `RdsSg`, Fn.importValue(`RdsSg-${props.stage}`))
+    rdsSg.addIngressRule(
+      this.fargateService.connections.securityGroups[0],
+      ec2.Port.tcp(3306),
+      'Allow Fargate access to RDS'
+    );
+    
   }
 }

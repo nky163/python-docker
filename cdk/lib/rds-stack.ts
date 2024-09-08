@@ -1,5 +1,5 @@
 // lib/rds-stack.ts
-import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
@@ -7,11 +7,12 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
 interface RdsStackProps extends StackProps {
   vpc: ec2.Vpc;
+  stage: string;
 }
 
 export class RdsStack extends Stack {
   public readonly cluster: rds.DatabaseCluster;
-
+  
   constructor(scope: Construct, id: string, props: RdsStackProps) {
     super(scope, id, props);
 
@@ -23,19 +24,24 @@ export class RdsStack extends Stack {
     // RDS Aurora MySQL クラスターの作成
     this.cluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
       engine: rds.DatabaseClusterEngine.auroraMysql({
-        version: rds.AuroraMysqlEngineVersion.VER_3_03_0,
+        version: rds.AuroraMysqlEngineVersion.VER_3_07_0,
       }),
       credentials: rds.Credentials.fromSecret(credentials),
       defaultDatabaseName: 'myappdb',
-      instances: 2,
+      instances: 1,
       instanceProps: {
         vpc: props.vpc,
         vpcSubnets: {
-          subnetType: ec2.SubnetType.PRIVATE_ISOLATED, // プライベートサブネットを使用
+          subnetGroupName: 'rds-subnet'
         },
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE2, ec2.InstanceSize.SMALL),
+        instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MEDIUM),
       },
       removalPolicy: RemovalPolicy.DESTROY, // 環境削除時にRDSを削除
+    });
+    
+    new CfnOutput(this, `RdsSg-${props.stage}`, {
+      exportName: `RdsSg-${props.stage}`,
+      value: this.cluster.connections.securityGroups[0].securityGroupId,
     });
   }
 }
