@@ -17,7 +17,7 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION
 };
 
-const suffix = '-nakaya';
+const suffix = '';
 
 const vpcStack = new VpcStack(app, `${appName}-${stage}-VpcStack`, {
   env,
@@ -54,18 +54,19 @@ const ecsServiceStack = new EcsServiceStack(app, `${appName}-${stage}${suffix}-E
   suffix: suffix,
 });
 
-// const pipelineStack = new PipelineStack(app, `${appName}-${stage}-PipelineStack`, {
-//   env,
-//   ecsServiceStack: ecsServiceStack,
-//   ecrStack: ecrStack,
-// })
+const pipelineStack = new PipelineStack(app, `${appName}-${stage}-PipelineStack`, {
+  env,
+  ecsServiceStack: ecsServiceStack,
+  ecrStack: ecrStack,
+  stage: stage,
+})
 
 ecsClusterStack.addDependency(vpcStack);
 ecsServiceStack.addDependency(ecsClusterStack);
 ecsServiceStack.addDependency(certificateStack);
 ecsServiceStack.addDependency(rdsStack);
-// pipelineStack.addDependency(ecrStack);
-// pipelineStack.addDependency(ecsServiceStack);
+pipelineStack.addDependency(ecrStack);
+pipelineStack.addDependency(ecsServiceStack);
 
 Tags.of(app).add('Project', 'MyApp');
 Tags.of(app).add('Stage', stage);

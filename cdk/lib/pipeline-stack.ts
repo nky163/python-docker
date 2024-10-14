@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import * as codedeploy from 'aws-cdk-lib/aws-codedeploy';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { EcsServiceStack } from './ecs-service-stack';
@@ -10,6 +11,7 @@ import { EcrStack } from './ecr-stack';
 interface PipelineStackProps extends cdk.StackProps {
   ecsServiceStack: EcsServiceStack;
   ecrStack: EcrStack;
+  stage: string;
 }
 
 export class PipelineStack extends cdk.Stack {
@@ -122,13 +124,20 @@ export class PipelineStack extends cdk.Stack {
       ]
     });
 
+    // const deploymentGroup = codedeploy.EcsDeploymentGroup.fromEcsDeploymentGroupAttributes(this, 'DeploymentGroup', {
+    //   application: codedeploy.EcsApplication.fromEcsApplicationArn(this, 'EcsApplication', cdk.Fn.importValue(`FargateDA-${props.stage}`)),
+    //   deploymentGroupName: cdk.Fn.importValue(`FargateDG-${props.stage}`)
+    // })
     // デプロイステージ
     pipeline.addStage({
       stageName: 'ECSDeploy',
       actions: [
         new codepipeline_actions.CodeDeployEcsDeployAction({
           actionName: 'Deploy',
-          deploymentGroup: props.ecsServiceStack.deploymentGroup,
+          deploymentGroup: codedeploy.EcsDeploymentGroup.fromEcsDeploymentGroupAttributes(this, 'DeploymentGroup', {
+            application: codedeploy.EcsApplication.fromEcsApplicationArn(this, 'EcsApplication', 'arn:aws:codedeploy:ap-northeast-1:142196353354:application:dev-EcsDeployApplication'),
+            deploymentGroupName: cdk.Fn.importValue(`FargateDG-${props.stage}`),
+          }),
           appSpecTemplateFile: dockerBuildOutput.atPath('appspec.yaml'),
           taskDefinitionTemplateFile: dockerBuildOutput.atPath('taskdef.json'),
           containerImageInputs: [
@@ -136,7 +145,7 @@ export class PipelineStack extends cdk.Stack {
               input: dockerBuildOutput,
               taskDefinitionPlaceholder: "IMAGE1_NAME",
             }
-          ]
+          ],
         })
       ]
     });

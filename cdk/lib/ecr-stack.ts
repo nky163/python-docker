@@ -16,7 +16,7 @@ export class EcrStack extends cdk.Stack {
           tagPrefixList: ['main', 'deploy'],
           rulePriority: 1,
           description: 'Keep images with main or deploy tags',
-          maxImageCount: undefined,  // 削除しないため maxImageCount は指定しない
+          maxImageCount: 8,  // 削除しないため maxImageCount は指定しない
         },
         {
           // develop. で始まるタグがついているイメージは7世代残す

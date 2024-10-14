@@ -113,6 +113,9 @@ export class EcsServiceStack extends Stack {
 
     // デプロイ設定
     this.deploymentGroup = new codedeploy.EcsDeploymentGroup(this, 'EcsDeploymentGroup', {
+      application: new codedeploy.EcsApplication(this, 'EcsDeployApplication', {
+        applicationName: `${props.stage}-EcsDeployApplication`, // 任意のアプリケーション名
+      }),
       service: albFargateService.service,
       deploymentGroupName: `${props.stage}${props.suffix}-codedeploy-group`,
       blueGreenDeploymentConfig: {
@@ -134,5 +137,14 @@ export class EcsServiceStack extends Stack {
       'Allow Fargate access to RDS'
     );
     
+    new CfnOutput(this, `FargateDA-${props.stage}${props.suffix}`, {
+      exportName: `FargateDA-${props.stage}${props.suffix}`,
+      value: this.deploymentGroup.application.applicationArn,
+    });
+    
+    new CfnOutput(this, `FargateDG-${props.stage}${props.suffix}`, {
+      exportName: `FargateDG-${props.stage}${props.suffix}`,
+      value: this.deploymentGroup.deploymentGroupName,
+    });
   }
 }
